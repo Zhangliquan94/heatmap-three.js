@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>heatmap2D demo</title>
+    <link type="text/css" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maptalks/dist/maptalks.css">
+    <script type="text/javascript" src="https://cdn.bootcss.com/three.js/92/three.min.js"></script>
+    <script type="text/javascript" src="lib/heatmap.js"></script>
+    <script type="text/javascript" src="lib/maptalks.js"></script>
+    <script type="text/javascript" src="lib/maptalks.three.js"></script>
+    <script type="text/javascript" src="lib/OrbitControls.js"></script>
+    <script type="text/javascript" src="lib/dat.gui.min.js"></script>
+    <script type="text/javascript" src="TDT_school.js"></script>
+    <style>
+        html,
+        /* body {
+            margin: 0px;
+            height: 100%;
+            width: 100%;
+        } */
+
+        body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        #map {
+            width: 1024px;
+            height: 512px;
+            background-color: #000;
+        }
+    </style>
+    <script id="vertexShader" type="x-shader/x-vertex">
+        uniform sampler2D heightMap;
+        uniform float heightRatio;
+        varying vec2 vUv;
+        varying float hValue;
+        varying vec3 cl;
+        void main() {
+            vUv = uv;
+            vec3 pos = position;
+            cl = texture2D(heightMap, vUv).rgb;
+            hValue = texture2D(heightMap, vUv).r;
+            pos.y = hValue * heightRatio;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(pos,1.0);
+        }
+</script>
+    <script id="fragmentShader" type="x-shader/x-fragment">
+        varying float hValue;
+        varying vec3 cl;
+        void main() {
+             float v = abs(hValue - 1.);
+             gl_FragColor = vec4(cl, .8 - v * v) ; 
+        }
+</script>
+</head>
+
+<body>
+    <div id="map"></div>
+    <div id="heatmap"></div>
+    <div id="heatmap-canvas" style="display: none"></div>
+    <script>
+        var heatmap, camera, scene, renderer, texture;
+
+        //地图区域创建plane，然后用heatmap生成的canvas图像贴到plane上
+        var map = new maptalks.Map('map',
+            {
+                center: [114.30675205232956, 30.582469098504617],
+                zoom: 10,//初始化显示层级 可自己更改 
+                baseLayer: new maptalks.TileLayer('base', {
+                    urlTemplate: 'http://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+                    subdomains: ['a', 'b', 'c', 'd'],
+                    //renderer:'canvas',
+                    attribution: '&copy; <a href="http://osm.org">OpenStreetMap</a> contributors, &copy; <a href="https://carto.com/">CARTO</a>'
+                })
+            });
+        map.on('click', function (e) {
+
+        });
+
+        var threeLayer = new maptalks.ThreeLayer('t', {
+            forceRenderOnMoving: true,
+            forceRenderOnRotating: true
+        });
+
+        threeLayer.prepareToDraw = function (gl, sc, ca) {
+            renderer = gl;
+            camera = ca;
+            scene = sc;
+            heatmap = h337.create({
+                container: document.getElementsByClassName("maptalks-canvas-layer")[0],//maptalks-all-layers//maptalks-canvas-layer
+                //container: document.getElementById("heatmap-canvas"),//heatmap-canvas//maptalks-all-layers//maptalks-canvas-layer
+                //container: gl.domElement,//threeLayer._renderer.canvas//gl.canvas
+                width: 1024,
+                height: 512,
+                blur: '.8',
+                radius: 25
+            });
+        };
+        threeLayer.draw = function (a, b, c) {
+            threeLayer.clearMesh();
+            var features = [];
+            TDT_school.features.forEach(function (fea) {
+                const point = map.coordinateToContainerPoint(new maptalks.Coordinate(fea.geometry));
+                features.push({ x: Math.round(point.x), y: Math.round(point.y), value: getRandom(1, 10) });
+            });
+            heatmap.setData({
+                max: 12,
+                data: features
+            });
+            texture = new THREE.Texture(heatmap._renderer.canvas);
+            var geometry = new THREE.PlaneBufferGeometry(50, 50, 1000, 1000);
+            var material = new THREE.ShaderMaterial({
+                uniforms: {
+                    heightMap: { value: texture },
+                    heightRatio: { value: 1.2 }
+                },
+                vertexShader: document.getElementById('vertexShader').textContent,
+                fragmentShader: document.getElementById('fragmentShader').textContent,
+                transparent: true,
+            });
+            var mesh = new THREE.Mesh(geometry, material);
+            scene.add(mesh);
+            animate()
+            //记录下绘制过的数据
+            //this._drawnData = drawn;
+            //结束绘制:
+            // 1. 触发必要的事件
+            // 2. 将渲染器的canvas设为更新状态, map会加载canvas并呈现在地图上
+            this.completeRender();
+        };
+        threeLayer.addTo(map);
+
+        function getRandom(max, min) {
+            return Math.round((Math.random() * (max - min + 1) + min) * 10) / 10;
+        }
+
+        function animate() {
+            texture.needsUpdate = true;
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+
+
+
+
+
+    </script>
+</body>
+
+</html>
